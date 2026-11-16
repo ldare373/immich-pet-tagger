@@ -2,39 +2,39 @@
 # Using a venv so the runtime stage snapshots only the final cleaned-up filesystem.
 FROM python:3.12-slim AS builder
 
-# GPU support:
-#   NVIDIA (default, Turing+ incl. Blackwell):       set CUDA=true
-#   NVIDIA legacy (Maxwell/Pascal/Volta, no Blackwell): set CUDA=true and CUDA_LEGACY=true
-#   AMD:    set ROCM=true  (requires ROCm drivers on the host)
-#   Intel:  set XPU=true
-#   None:   leave all false (CPU-only, slow but works)
-ARG CUDA=false
-ARG CUDA_LEGACY=false
-ARG ROCM=false
-ARG XPU=false
+# GPU support; Possible values:
+#   "cuda_l" Nvidia Turing+ incl. Blackwell
+#   "cuda"   Nvidia Maxwell/Pascal/Volta, no Blackwell
+#   "rocm"   AMD ROCm
+#   "xpu"    Intel Xe (Arc Alchemist, Arc Battlemage, Iris)
+# CPU-only if unset (slow but works)
+ARG GPU=""
 
 RUN python -m venv /opt/venv
 ENV PATH="/opt/venv/bin:$PATH"
+RUN if [[ -n "$CUDA" || -n "$AMD" ]]; then \
+  echo 'GPU support is now set with GPU=[cuda|cuda_l|rocm|xpu], not: CUDA=true, ROCM=true, ...' ; \
+  exit 1 ;fi
 
 # Install torch first so it gets its own cached layer.
 # cu128 wheels (default) drop sm_50/60/70 to fit PyPI size limits; cu126 wheels keep
 # Maxwell through Hopper but lack Blackwell (sm_100/120). See pytorch/pytorch#145544.
-RUN if [ "$CUDA" = "true" ] && [ "$CUDA_LEGACY" = "true" ]; then \
+RUN if [ "$GPU" = "cuda_l" ]; then \
       pip install --no-cache-dir \
         torch==2.7.0+cu126 \
         torchvision==0.22.0+cu126 \
         --extra-index-url https://download.pytorch.org/whl/cu126; \
-    elif [ "$CUDA" = "true" ]; then \
+    elif [ "$GPU" = "cuda" ]; then \
       pip install --no-cache-dir \
         torch==2.7.0+cu128 \
         torchvision==0.22.0+cu128 \
         --extra-index-url https://download.pytorch.org/whl/cu128; \
-    elif [ "$ROCM" = "true" ]; then \
+    elif [ "$GPU" = "rocm" ]; then \
       pip install --no-cache-dir \
         torch==2.7.0 \
         torchvision==0.22.0 \
         --index-url https://download.pytorch.org/whl/rocm6.3; \
-    elif [ "$XPU" = "true" ]; then \
+    elif [ "$GPU" = "xpu" ]; then \
       pip install --no-cache-dir \
         torch==2.7.0 \
         torchvision==0.22.0 \
@@ -95,7 +95,7 @@ CMD ["python", "/app/main.py"]
 # https://www.intel.com/content/www/us/en/developer/articles/tool/pytorch-prerequisites-for-intel-gpu/2-15.html
 # https://dgpu-docs.intel.com/legacy/installation-guides/installing-packages-from-the-intel-ppa.html
 # Looks like these are currently in debian unstable too.
-RUN if [ "$XPU" = "true" ]; then \
+RUN if [ "$GPU" = "xpu" ]; then \
   printf "deb [signed-by=/etc/apt/keyrings/intel-graphics.gpg] https://ppa.launchpadcontent.net/kobuk-team/intel-graphics/ubuntu noble main" \
     >>/etc/apt/sources.list; \
   echo "https://keyserver.ubuntu.com/pks/lookup?op=get&search=0x0c0e6af955ce463c03fc51574d098d70afbe5e1f" \
