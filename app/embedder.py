@@ -122,7 +122,11 @@ def _clip_batch_loop(worker_id: int) -> None:
     if not _clip_preprocess_ready.is_set():
         _clip_preprocess_fn = preprocess
         _clip_preprocess_ready.set()
-    stream = torch.cuda.Stream() if device == "cuda" else None
+
+    if device == "cuda": stream = torch.cuda.Stream()
+    elif device == "xpu": stream = torch.xpu.Stream()
+    else: stream = None
+
     log.info(f"CLIP worker {worker_id} ready")
 
     while True:
@@ -143,7 +147,7 @@ def _clip_batch_loop(worker_id: int) -> None:
         try:
             stacked = torch.stack([req.tensor for req in batch])
             if stream is not None:
-                with torch.cuda.stream(stream):
+                with (torch.cuda.stream(stream) if device == "cuda" else torch.xpu.stream(stream)):
                     tensors = stacked.to(device, non_blocking=True)
                     with torch.no_grad():
                         feats = model.encode_image(tensors)

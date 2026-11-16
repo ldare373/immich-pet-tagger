@@ -31,12 +31,14 @@ def pick_device() -> str:
     mps = getattr(backends, "mps", None)
     if mps is not None and mps.is_available():
         return "mps"
+    if torch.xpu.is_available():
+        return "xpu"
     return "cpu"
 
 
 def is_gpu(device: str) -> bool:
     """True for accelerator devices (used to scale worker counts up from the CPU default)."""
-    return device in ("cuda", "mps")
+    return device in ("cuda", "mps", "xpu")
 
 
 @functools.lru_cache(maxsize=1)
@@ -70,6 +72,8 @@ def empty_cache(device: str) -> None:
         torch.cuda.empty_cache()
     elif device == "mps":
         torch.mps.empty_cache()
+    elif device == "xpu":
+        torch.xpu.empty_cache()
 
 
 def submit_lock(device: str):
